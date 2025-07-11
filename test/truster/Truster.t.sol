@@ -5,12 +5,13 @@ pragma solidity =0.8.25;
 import {Test, console} from "forge-std/Test.sol";
 import {DamnValuableToken} from "../../src/DamnValuableToken.sol";
 import {TrusterLenderPool} from "../../src/truster/TrusterLenderPool.sol";
+import {TrusterExploit} from "./TrusterExploit.sol";
 
 contract TrusterChallenge is Test {
     address deployer = makeAddr("deployer");
     address player = makeAddr("player");
     address recovery = makeAddr("recovery");
-    
+
     uint256 constant TOKENS_IN_POOL = 1_000_000e18;
 
     DamnValuableToken public token;
@@ -51,11 +52,16 @@ contract TrusterChallenge is Test {
      * CODE YOUR SOLUTION HERE
      */
     function test_truster() public checkSolvedByPlayer {
-        
+        TrusterExploit exploitContract = new TrusterExploit(
+            address(pool),
+            address(token)
+        );
+
+        exploitContract.exploit(recovery);
     }
 
     /**
-     * CHECKS SUCCESS CONDITIONS - DO NOT TOUCH
+     * CHECKS SUCCESS CONDITIONS - DO NOT TOUCHxw
      */
     function _isSolved() private view {
         // Player must have executed a single transaction
@@ -63,6 +69,10 @@ contract TrusterChallenge is Test {
 
         // All rescued funds sent to recovery account
         assertEq(token.balanceOf(address(pool)), 0, "Pool still has tokens");
-        assertEq(token.balanceOf(recovery), TOKENS_IN_POOL, "Not enough tokens in recovery account");
+        assertEq(
+            token.balanceOf(recovery),
+            TOKENS_IN_POOL,
+            "Not enough tokens in recovery account"
+        );
     }
 }
