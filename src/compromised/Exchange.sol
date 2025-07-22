@@ -6,6 +6,7 @@ import {Address} from "@openzeppelin/contracts/utils/Address.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {TrustfulOracle} from "./TrustfulOracle.sol";
 import {DamnValuableNFT} from "../DamnValuableNFT.sol";
+import "forge-std/console.sol";
 
 contract Exchange is ReentrancyGuard {
     using Address for address payable;
@@ -32,13 +33,19 @@ contract Exchange is ReentrancyGuard {
             revert InvalidPayment();
         }
 
+        // @audit can we manipulate the price and buy an NFT? we have only 0.1 ether
+        // @audit-info can we buy an NFT for 0.1 ether?
+        // @audit-info current NFT price is 999 ether
         // Price should be in [wei / NFT]
         uint256 price = oracle.getMedianPrice(token.symbol());
+
         if (msg.value < price) {
             revert InvalidPayment();
         }
 
         id = token.safeMint(msg.sender);
+        // @audit-ok why is this unchecked? can it overflow or underflow?
+        // @audit-ok no, it can't overflow or underflow because msg.value is always bigger than price
         unchecked {
             payable(msg.sender).sendValue(msg.value - price);
         }
@@ -56,6 +63,7 @@ contract Exchange is ReentrancyGuard {
         }
 
         // Price should be in [wei / NFT]
+        // @audit if we can buy somehow an NFT for 0.1 ether, we can sell it for 999 ether
         uint256 price = oracle.getMedianPrice(token.symbol());
         if (address(this).balance < price) {
             revert NotEnoughFunds();
