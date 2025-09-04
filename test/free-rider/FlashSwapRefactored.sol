@@ -10,6 +10,19 @@ import {FreeRiderNFTMarketplace} from "../../src/free-rider/FreeRiderNFTMarketpl
 import {FreeRiderRecoveryManager} from "../../src/free-rider/FreeRiderRecoveryManager.sol";
 import {DamnValuableNFT} from "../../src/DamnValuableNFT.sol";
 
+// Explain the hack
+// 1. We are using a flash swap to borrow 15 ETH from Uniswap V2
+// 2. We are using the borrowed ETH to purchase all NFTs from the marketplace
+// 3. We are transferring the NFTs to the recovery manager for bounty claim
+// 4. We are repaying the flash swap with fees
+// 5. We are returning the remaining funds to the player
+
+// The exploit is based on the fact that the buyMany function in the marketplace contract
+// reuses the msg.value for each NFT purchase, so we can use the same msg.value for each NFT purchase
+// This allows us to purchase all NFTs with the borrowed ETH
+// The flash swap is used to borrow the ETH, and the fees are added to the repayment amount
+// The remaining funds are returned to the player
+
 /**
  * @title FlashSwapRefactored
  * @notice Optimized flash loan contract for exploiting FreeRider NFT marketplace vulnerability
