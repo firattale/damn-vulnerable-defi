@@ -12,15 +12,15 @@ import {SafeProxyFactory} from "@safe-global/safe-smart-account/contracts/proxie
  */
 contract WalletDeployer {
     // Addresses of a Safe factory and copy on this chain
-    SafeProxyFactory public immutable cook;
-    address public immutable cpy;
+    SafeProxyFactory public immutable cook; // SafeProxyFactory contract for deploying Safe proxies
+    address public immutable cpy; // Safe singleton implementation contract
 
     uint256 public constant pay = 1 ether;
-    address public immutable chief;
-    address public immutable gem;
+    address public immutable chief; // Contract admin/deployer address
+    address public immutable gem; // ERC20 token contract for payments
 
-    address public mom;
-    address public hat;
+    address public mom; // Authorization contract address
+    address public hat; // Reserved for future use
 
     error Boom();
 
@@ -44,12 +44,23 @@ contract WalletDeployer {
     /**
      * @notice Allows the caller to deploy a new Safe account and receive a payment in return.
      *         If the authorizer is set, the caller must be authorized to execute the deployment
+     * @param aim Target address where the Safe should be deployed (must match CREATE2 prediction)
+     * @param wat Safe initialization data containing setup parameters
+     * @param num Salt nonce for CREATE2 deterministic address generation
+     * @return success True if deployment succeeded and payment was made
      */
-    function drop(address aim, bytes memory wat, uint256 num) external returns (bool) {
+    function drop(
+        address aim,
+        bytes memory wat,
+        uint256 num
+    ) external returns (bool success) {
+        // Check authorization: if authorizer is set, verify caller is authorized for target address
         if (mom != address(0) && !can(msg.sender, aim)) {
             return false;
         }
 
+        // Deploy Safe proxy and verify it was created at the expected address
+        // Uses SafeProxyFactory to create proxy pointing to Safe singleton implementation
         if (address(cook.createProxyWithNonce(cpy, wat, num)) != aim) {
             return false;
         }
@@ -60,17 +71,31 @@ contract WalletDeployer {
         return true;
     }
 
+    /**
+     * @notice Checks if user `u` is authorized to deploy at address `a`
+     * @dev Uses inline assembly to call the authorizer contract stored in slot 0
+     *      Calls can(address,address) function with selector 0x4538c4eb
+     * @param u User address to check authorization for
+     * @param a Target deployment address
+     * @return y True if user is authorized for the target address
+     */
     function can(address u, address a) public view returns (bool y) {
         assembly {
-            let m := sload(0)
-            if iszero(extcodesize(m)) { stop() }
-            let p := mload(0x40)
-            mstore(0x40, add(p, 0x44))
-            mstore(p, shl(0xe0, 0x4538c4eb))
-            mstore(add(p, 0x04), u)
-            mstore(add(p, 0x24), a)
-            if iszero(staticcall(gas(), m, p, 0x44, p, 0x20)) { stop() }
-            y := mload(p)
+            let m := sload(0) // Load authorizer address from storage slot 0 (mom)
+            if iszero(extcodesize(m)) {
+                // Revert if authorizer has no code
+                stop()
+            }
+            let p := mload(0x40) // Get free memory pointer
+            mstore(0x40, add(p, 0x44)) // Update free memory pointer
+            mstore(p, shl(0xe0, 0x4538c4eb)) // Store function selector: can(address,address)
+            mstore(add(p, 0x04), u) // Store first parameter: user address
+            mstore(add(p, 0x24), a) // Store second parameter: target address
+            if iszero(staticcall(gas(), m, p, 0x44, p, 0x20)) {
+                // Call authorizer.can(u, a)
+                stop() // Revert if call failed
+            }
+            y := mload(p) // Load return value (boolean)
         }
     }
 }
