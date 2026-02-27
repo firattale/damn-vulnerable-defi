@@ -17,6 +17,7 @@ contract SelfAuthorizedVault is AuthorizedExecutor {
     error InvalidWithdrawalAmount();
     error WithdrawalWaitingPeriodNotEnded();
 
+    // @audit-info TAG-012: sole access control for withdraw/sweepFunds — no protection if execute() is bypassed
     modifier onlyThis() {
         if (msg.sender != address(this)) {
             revert CallerNotAllowed();
@@ -35,15 +36,18 @@ contract SelfAuthorizedVault is AuthorizedExecutor {
             revert InvalidWithdrawalAmount();
         }
 
+        // @audit-info TAG-013: uses <= (strict), withdrawal denied at exact boundary timestamp
         if (block.timestamp <= _lastWithdrawalTimestamp + WAITING_PERIOD) {
             revert WithdrawalWaitingPeriodNotEnded();
         }
 
+        // @audit-ok CEI pattern correct — state updated before external transfer
         _lastWithdrawalTimestamp = block.timestamp;
 
         SafeTransferLib.safeTransfer(token, recipient, amount);
     }
 
+    // @audit-info TAG-014: [knob] no amount limit, no cooldown — drains entire balance in one call
     function sweepFunds(address receiver, IERC20 token) external onlyThis {
         SafeTransferLib.safeTransfer(address(token), receiver, token.balanceOf(address(this)));
     }
@@ -52,6 +56,7 @@ contract SelfAuthorizedVault is AuthorizedExecutor {
         return _lastWithdrawalTimestamp;
     }
 
+    // @audit-ok target restriction correct — only allows self-calls
     function _beforeFunctionCall(address target, bytes memory) internal view override {
         if (target != address(this)) {
             revert TargetNotAllowed();

@@ -1,0 +1,54 @@
+{
+  "project": "abi-smuggling",
+  "framework": "Foundry",
+  "sourceDir": "src/abi-smuggling",
+  "solidityVersion": "=0.8.25",
+  "commitHash": "ce9a34cc60645c8c3ef9b23069ea9756e2f93dc4",
+  "createdAt": "2026-02-27T00:00:00.000Z",
+  "contracts": [
+    {
+      "path": "AuthorizedExecutor.sol",
+      "name": "AuthorizedExecutor",
+      "sloc": 40,
+      "pragma": "=0.8.25"
+    },
+    {
+      "path": "SelfAuthorizedVault.sol",
+      "name": "SelfAuthorizedVault",
+      "sloc": 40,
+      "pragma": "=0.8.25"
+    }
+  ],
+  "totalSloc": 80,
+  "totalContracts": 2,
+  "documentation": [
+    "src/abi-smuggling/README.md"
+  ],
+  "previousAudits": [],
+  "phases": {
+    "init": { "status": "complete", "completedAt": "2026-02-27T00:00:00.000Z" },
+    "goals": { "status": "complete", "completedAt": "2026-02-27T00:00:00.000Z" },
+    "tags": { "status": "complete", "completedAt": "2026-02-27T00:00:00.000Z" },
+    "diagram": { "status": "complete", "completedAt": "2026-02-27T00:00:00.000Z" },
+    "attack": { "status": "complete", "completedAt": "2026-02-27T00:00:00.000Z" },
+    "report": { "status": "complete", "completedAt": "2026-02-27T00:00:00.000Z" }
+  },
+  "findings": {
+    "critical": 1,
+    "high": 0,
+    "medium": 0,
+    "low": 1,
+    "info": 1,
+    "total": 3
+  },
+  "flows": ["set-permissions", "execute-withdraw", "execute-sweep", "execute-smuggled"],
+  "tagCount": {
+    "security": 4,
+    "math": 0,
+    "logic": 2,
+    "edge": 3,
+    "question": 1,
+    "knob": 4,
+    "total": 14
+  }
+}
