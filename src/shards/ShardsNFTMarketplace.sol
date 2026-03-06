@@ -15,7 +15,7 @@ import {FixedPointMathLib} from "solmate/utils/FixedPointMathLib.sol";
  * @notice NFT marketplace where sellers offer NFTs, and buyers can collectively acquire pieces of them.
  *         Pieces of the NFT are represented by an integrated ERC1155 token.
  *         The marketplace charges sellers a 2% fee, stored in a secure on-chain vault.
- */
+ */ // @audit-info TAG-001: NatSpec says 2% fee but code computes 1% — documentation mismatch
 contract ShardsNFTMarketplace is IShardsNFTMarketplace, IERC721Receiver, ERC1155 {
     using FixedPointMathLib for uint256;
 
@@ -32,7 +32,7 @@ contract ShardsNFTMarketplace is IShardsNFTMarketplace, IERC721Receiver, ERC1155
 
     uint64 public offerCount;
     uint256 public feesInBalance;
-    uint256 public rate; // DVT per USDC
+    uint256 public rate; // @audit-info TAG-010: [knob] DVT per USDC rate — oracle-controlled, affects all pricing
     mapping(uint64 offerId => Offer) public offers;
     mapping(uint256 nftId => uint64 offerId) public nftToOffers;
     mapping(uint64 offerdId => Purchase[]) public purchases;
@@ -62,7 +62,9 @@ contract ShardsNFTMarketplace is IShardsNFTMarketplace, IERC721Receiver, ERC1155
      * @param totalShards how many shards for the NFT
      * @param price total price, expressed in USDC units
      */
+    // @audit-info TAG-002: [knob] totalShards is user-controlled, no min/max validation — affects all price math
     function openOffer(uint256 nftId, uint256 totalShards, uint256 price) external returns (uint256) {
+        // @audit-info TAG-003: no validation on totalShards — could be 0 (div-by-zero in fill) or extremely large
         if (price == 0) revert BadPrice();
         offerCount++; // offer IDs start at 1
 
@@ -104,6 +106,7 @@ contract ShardsNFTMarketplace is IShardsNFTMarketplace, IERC721Receiver, ERC1155
         nft.safeTransferFrom(address(this), msg.sender, nftId, "");
     }
 
+    // @audit-info TAG-009: anyone can call depositFees — moves DVT from marketplace to vault
     function depositFees(bool stake) external {
         feeVault.deposit(feesInBalance, stake);
         feesInBalance = 0;
@@ -122,6 +125,7 @@ contract ShardsNFTMarketplace is IShardsNFTMarketplace, IERC721Receiver, ERC1155
 
         offer.stock -= want;
         purchaseIndex = purchases[offerId].length;
+        // @audit-info TAG-013: [knob] rate snapshot per purchase — different purchases can have different rates
         uint256 _currentRate = rate;
         purchases[offerId].push(
             Purchase({
@@ -132,10 +136,11 @@ contract ShardsNFTMarketplace is IShardsNFTMarketplace, IERC721Receiver, ERC1155
                 cancelled: false
             })
         );
+        // @audit-issue C-01: fill payment rounds DOWN to 0 for small want — free shards (critical-001)
         paymentToken.transferFrom(
             msg.sender, address(this), want.mulDivDown(_toDVT(offer.price, _currentRate), offer.totalShards)
         );
-        if (offer.stock == 0) _closeOffer(offerId);
+        if (offer.stock == 0) _closeOffer(offerId); // @audit-info TAG-014: [knob] buyer controls when offer closes by choosing exact want to deplete stock
     }
 
     /**
@@ -149,6 +154,7 @@ contract ShardsNFTMarketplace is IShardsNFTMarketplace, IERC721Receiver, ERC1155
         if (msg.sender != buyer) revert NotAllowed();
         if (!offer.isOpen) revert NotOpened(offerId);
         if (purchase.cancelled) revert AlreadyCancelled();
+        // @audit-issue C-01: broken time check allows immediate cancel in same block (critical-001)
         if (
             purchase.timestamp + CANCEL_PERIOD_LENGTH < block.timestamp
                 || block.timestamp > purchase.timestamp + TIME_BEFORE_CANCEL
@@ -160,6 +166,7 @@ contract ShardsNFTMarketplace is IShardsNFTMarketplace, IERC721Receiver, ERC1155
 
         emit Cancelled(offerId, purchaseIndex);
 
+        // @audit-issue C-01: cancel refund formula ignores price/totalShards — refunds ~1e13x more than paid (critical-001)
         paymentToken.transfer(buyer, purchase.shards.mulDivUp(purchase.rate, 1e6));
     }
 
@@ -177,7 +184,7 @@ contract ShardsNFTMarketplace is IShardsNFTMarketplace, IERC721Receiver, ERC1155
      * @param price price in USDC units
      */
     function getFee(uint256 price, uint256 _rate) public pure returns (uint256) {
-        uint256 fee = price.mulDivDown(1e6, 100e6); // 1% fee
+        uint256 fee = price.mulDivDown(1e6, 100e6); // @audit-info TAG-008: 1% fee, not 2% as NatSpec claims
         return _toDVT(fee, _rate);
     }
 
@@ -205,6 +212,7 @@ contract ShardsNFTMarketplace is IShardsNFTMarketplace, IERC721Receiver, ERC1155
         for (uint256 i = 0; i < _purchases.length; i++) {
             Purchase memory purchase = _purchases[i];
             if (purchase.cancelled) continue;
+            // @audit TAG-007: seller payment = shards * rate / 1e18 (mulWadUp) — THIRD different formula, divides by 1e18 not 1e6
             payment += purchase.shards.mulWadUp(purchase.rate);
             _mint({to: purchase.buyer, id: offer.nftId, value: purchase.shards, data: ""});
             assert(balanceOf(purchase.buyer, offer.nftId) <= offer.totalShards); // invariant
@@ -212,9 +220,11 @@ contract ShardsNFTMarketplace is IShardsNFTMarketplace, IERC721Receiver, ERC1155
 
         offers[offerId].isOpen = false;
         emit ClosedOffer(offerId);
+        // @audit-info TAG-011: seller payment transfer — could exceed collected buyer payments due to TAG-007 math mismatch
         paymentToken.transfer(offer.seller, payment);
     }
 
+    // @audit-info TAG-012: _toDVT divides by 1e6 — used in fill and getFee but NOT in cancel or _closeOffer
     function _toDVT(uint256 _value, uint256 _rate) private pure returns (uint256) {
         return _value.mulDivDown(_rate, 1e6);
     }

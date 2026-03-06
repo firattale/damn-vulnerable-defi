@@ -24,6 +24,7 @@ contract ShardsFeeVault is Initializable, Ownable {
         token = _token;
     }
 
+    // @audit-ok TAG-015: deposit is permissionless but requires transferFrom approval — marketplace has max approval
     function deposit(uint256 amount, bool stake) external {
         token.transferFrom(msg.sender, address(this), amount);
         if (address(staking) != address(0) && stake) {
@@ -31,6 +32,7 @@ contract ShardsFeeVault is Initializable, Ownable {
         }
     }
 
+    // @audit-ok TAG-016: onlyOwner protects withdrawal — owner is deployer, not player-controlled
     function withdraw(address receiver, bool unstake) external onlyOwner {
         uint256 unstakedAmount = token.balanceOf(address(this));
         uint256 rewards;
@@ -46,6 +48,6 @@ contract ShardsFeeVault is Initializable, Ownable {
     function enableStaking(DamnValuableStaking _staking) external onlyOwner {
         staking = _staking;
         require(staking.token() == token);
-        token.approve(address(_staking), type(uint256).max);
+        token.approve(address(_staking), type(uint256).max); // @audit-info TAG-017: max approval to staking contract
     }
 }
