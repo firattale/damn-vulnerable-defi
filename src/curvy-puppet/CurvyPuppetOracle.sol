@@ -21,6 +21,7 @@ contract CurvyPuppetOracle is Ownable {
         _initializeOwner(msg.sender);
     }
 
+    // @audit-ok TAG-020: staleness check present — reverts if price expired
     function getPrice(address asset) external view returns (Price memory) {
         Price memory price = prices[asset];
 
@@ -30,6 +31,8 @@ contract CurvyPuppetOracle is Ownable {
         return price;
     }
 
+    // @audit-ok TAG-021: owner-only, validates value != 0 and expiration within 2 days
+    // @audit-info TAG-022: [knob] owner can set arbitrary price values — trusted actor assumption
     function setPrice(address asset, uint256 value, uint256 expiration) external onlyOwner {
         if (value == 0) revert InvalidPrice();
         if (expiration <= block.timestamp || expiration > block.timestamp + 2 days) revert InvalidExpiration();
