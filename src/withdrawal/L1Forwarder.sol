@@ -43,30 +43,32 @@ contract L1Forwarder is ReentrancyGuard, Ownable {
             abi.encodeWithSignature("forwardMessage(uint256,address,address,bytes)", nonce, l2Sender, target, message)
         );
 
+        // @audit TAG-009: two paths — (1) gateway+l2Handler: fresh forward, (2) anyone: retry of failed message
         if (msg.sender == address(gateway) && gateway.xSender() == l2Handler) {
-            require(!failedMessages[messageId]);
+            require(!failedMessages[messageId]); // @audit-info TAG-010: fresh path requires message NOT previously failed
         } else {
-            require(failedMessages[messageId]);
+            require(failedMessages[messageId]); // @audit-info TAG-011: retry path requires message to have failed before
         }
 
         if (successfulMessages[messageId]) {
             revert AlreadyForwarded(messageId);
         }
 
-        if (target == address(this) || target == address(gateway)) revert BadTarget();
+        if (target == address(this) || target == address(gateway)) revert BadTarget(); // @audit-ok TAG-012: prevents self-call and gateway call
 
         Context memory prevContext = context;
+        // @audit-info TAG-013: [knob] l2Sender param sets context — getSender() returns this during call
         context = Context({l2Sender: l2Sender});
         bool success;
         assembly {
-            success := call(gas(), target, 0, add(message, 0x20), mload(message), 0, 0) // call with 0 value. Don't copy returndata.
+            success := call(gas(), target, 0, add(message, 0x20), mload(message), 0, 0) // @audit-info TAG-014: [callback] target gets arbitrary call — potential callback vector
         }
-        context = prevContext;
+        context = prevContext; // @audit-ok TAG-015: context restored after call — reentrancy guard also present
 
         if (success) {
             successfulMessages[messageId] = true;
         } else {
-            failedMessages[messageId] = true;
+            failedMessages[messageId] = true; // @audit-info TAG-016: failed messages become retryable by anyone via else branch above
         }
     }
 

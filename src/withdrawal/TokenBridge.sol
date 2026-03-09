@@ -21,9 +21,12 @@ contract TokenBridge {
     }
 
     function executeTokenWithdrawal(address receiver, uint256 amount) external {
+        // @audit TAG-017: access control logic — reverts if (sender != forwarder) OR (getSender == otherBridge)
+        // @audit TAG-018: getSender() reads L1Forwarder.context.l2Sender which is set by forwardMessage caller
+        // @audit-info TAG-019: if called NOT through forwarder, first condition true → reverts. If through forwarder but getSender != otherBridge → passes
         if (msg.sender != address(l1Forwarder) || l1Forwarder.getSender() == otherBridge) revert Unauthorized();
-        totalDeposits -= amount;
-        token.transfer(receiver, amount);
+        totalDeposits -= amount; // @audit-info TAG-020: underflow reverts (solidity 0.8.25) — acts as balance check
+        token.transfer(receiver, amount); // @audit-info TAG-021: unchecked transfer return — DVT is standard ERC20 so OK
     }
 
     /**

